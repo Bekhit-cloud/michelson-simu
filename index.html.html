@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Michelson Interferometer Simulator</title>
+  <!-- Load Tailwind CSS for clean, responsive styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0f19;
+      color: #e2e8f0;
+    }
+    /* Custom slider styling for crisp lab instrument feel */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #1e293b;
+      height: 6px;
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      border: 2px solid #0f172a;
+      transition: transform 0.1s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 md:p-6">
+
+  <!-- Top Header -->
+  <header class="max-w-7xl w-full mx-auto mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-4">
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-3 h-3 rounded-full bg-sky-400 animate-pulse"></span>
+        <h1 class="text-xl md:text-2xl font-bold text-white tracking-tight">Michelson Interferometer Simulator</h1>
+      </div>
+      <p class="text-sm text-slate-400 mt-1">Interactive Optical Bench &amp; Real-Time Wave Interference Lab</p>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex flex-wrap items-center gap-3">
+      <button id="btnResetFringes" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium border border-slate-700 transition cursor-pointer">
+        Reset Fringe Counter
+      </button>
+      <button id="btnResetAll" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium shadow-lg shadow-sky-900/30 transition cursor-pointer">
+        Reset Alignment
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Grid -->
+  <main class="max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow">
+
+    <!-- Left Visualization: 2D Top-Down Optical Bench (6 cols on desktop) -->
+    <section class="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300">1. Optical Bench Schematic (Top View)</h2>
+        <span id="beamStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+          Aligned
+        </span>
+      </div>
+      <div class="relative w-full aspect-square max-h-[420px] mx-auto bg-slate-950 rounded-xl border border-slate-800/80 overflow-hidden">
+        <canvas id="benchCanvas"></canvas>
+      </div>
+      <p class="text-xs text-slate-400 mt-3 leading-relaxed">
+        The laser splits 50/50 at the center beam splitter. One beam reflects off the fixed top mirror (<strong class="text-slate-300">M1</strong>), and the other reflects off the movable/tiltable right mirror (<strong class="text-slate-300">M2</strong>) before recombining at the detector.
+      </p>
+    </section>
+
+    <!-- Right Visualization: Interference Fringe Detector View (6 cols on desktop) -->
+    <section class="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col shadow-xl">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300">2. Detector Interference Fringes</h2>
+        <span id="wavelengthBadge" class="text-xs px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono">
+          632.8 nm (He-Ne)
+        </span>
+      </div>
+      <div class="relative w-full aspect-square max-h-[420px] mx-auto bg-black rounded-xl border border-slate-800/80 overflow-hidden flex items-center justify-center">
+        <canvas id="fringeCanvas"></canvas>
+        <!-- Subtle Crosshair Overlay -->
+        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div class="w-4 h-[1px] bg-white/30"></div>
+          <div class="h-4 w-[1px] bg-white/30 -ml-[8.5px]"></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 mt-3 leading-relaxed">
+        Circular bullseye rings appear when M1 and M2 are parallel. Moving M2 shifts rings inward/outward; tilting M2 turns circular rings into straight parallel fringes.
+      </p>
+    </section>
+
+    <!-- Bottom Left: Interactive Experiment Controls (7 cols) -->
+    <section class="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-4">Experiment Controls</h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Control 1: Laser Wavelength -->
+        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+          <div class="flex justify-between items-center mb-2">
+            <label for="sliderWavelength" class="text-sm font-medium text-slate-200">Laser Wavelength (&lambda;)</label>
+            <span id="valWavelength" class="text-sm font-mono font-semibold text-sky-400">632.8 nm</span>
+          </div>
+          <input id="sliderWavelength" type="range" min="400" max="700" step="0.2" value="632.8" class="w-full" />
+          <div class="flex justify-between text-[11px] text-slate-500 mt-1.5">
+            <span>400 nm (Violet)</span>
+            <span>532 nm (Green)</span>
+            <span>700 nm (Red)</span>
+          </div>
+        </div>
+
+        <!-- Control 2: Movable Mirror Displacement -->
+        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+          <div class="flex justify-between items-center mb-2">
+            <label for="sliderDisplacement" class="text-sm font-medium text-slate-200">Mirror M2 Position (d)</label>
+            <span id="valDisplacement" class="text-sm font-mono font-semibold text-sky-400">0.00 &mu;m</span>
+          </div>
+          <input id="sliderDisplacement" type="range" min="-5.00" max="5.00" step="0.01" value="0.00" class="w-full" />
+          <div class="flex justify-between text-[11px] text-slate-500 mt-1.5">
+            <span>-5.00 &mu;m</span>
+            <span>0.00 &mu;m</span>
+            <span>+5.00 &mu;m</span>
+          </div>
+        </div>
+
+        <!-- Control 3: Horizontal Tilt -->
+        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+          <div class="flex justify-between items-center mb-2">
+            <label for="sliderTiltX" class="text-sm font-medium text-slate-200">Mirror M2 Horiz. Tilt (&theta;<sub>x</sub>)</label>
+            <span id="valTiltX" class="text-sm font-mono font-semibold text-amber-400">0.00 mrad</span>
+          </div>
+          <input id="sliderTiltX" type="range" min="-2.00" max="2.00" step="0.02" value="0.00" class="w-full" />
+          <div class="flex justify-between text-[11px] text-slate-500 mt-1.5">
+            <span>-2.0 mrad</span>
+            <span>0.0 (Aligned)</span>
+            <span>+2.0 mrad</span>
+          </div>
+        </div>
+
+        <!-- Control 4: Vertical Tilt -->
+        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+          <div class="flex justify-between items-center mb-2">
+            <label for="sliderTiltY" class="text-sm font-medium text-slate-200">Mirror M2 Vert. Tilt (&theta;<sub>y</sub>)</label>
+            <span id="valTiltY" class="text-sm font-mono font-semibold text-amber-400">0.00 mrad</span>
+          </div>
+          <input id="sliderTiltY" type="range" min="-2.00" max="2.00" step="0.02" value="0.00" class="w-full" />
+          <div class="flex justify-between text-[11px] text-slate-500 mt-1.5">
+            <span>-2.0 mrad</span>
+            <span>0.0 (Aligned)</span>
+            <span>+2.0 mrad</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom Right: Live Lab Measurements (5 cols) -->
+    <section class="lg:col-span-5 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+      <div>
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300 mb-4">Live Lab Measurements</h2>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3">
+          <!-- Metric 1: Optical Path Difference -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+            <div>
+              <div class="text-xs text-slate-400">Optical Path Difference (OPD = 2d)</div>
+              <div class="text-[11px] text-slate-500">Extra distance traveled by beam 2</div>
+            </div>
+            <div id="readoutOPD" class="text-lg font-mono font-bold text-white">0.00 &mu;m</div>
+          </div>
+
+          <!-- Metric 2: Cumulative Fringe Shift -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+            <div>
+              <div class="text-xs text-slate-400">Fringe Shift Count (N = 2&Delta;d / &lambda;)</div>
+              <div class="text-[11px] text-slate-500">Rings crossed at screen center</div>
+            </div>
+            <div id="readoutFringes" class="text-lg font-mono font-bold text-sky-400">0.00</div>
+          </div>
+
+          <!-- Metric 3: Center Intensity -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+            <div>
+              <div class="text-xs text-slate-400">Center Detector Intensity</div>
+              <div class="text-[11px] text-slate-500">100% = Constructive, 0% = Destructive</div>
+            </div>
+            <div id="readoutIntensity" class="text-lg font-mono font-bold text-emerald-400">100.0%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-800/80 text-xs text-slate-400 flex items-center justify-between">
+        <span>Formula: <code class="text-slate-300">I = cos&sup2;(&pi;&middot;OPD / &lambda;)</code></span>
+        <span class="text-slate-500">Semester 1 Baseline</span>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. STATE VARIABLES (All physics parameters in one clean place)
+    // =========================================================================
+    const state = {
+      wavelengthNm: 632.8,    // Laser wavelength in nanometers (nm)
+      displacementUm: 0.0,    // Mirror M2 displacement d in micrometers (um)
+      referenceUm: 0.0,       // Reference position for counting fringe shifts N
+      tiltXmrad: 0.0,         // Horizontal tilt angle in milliradians (mrad)
+      tiltYmrad: 0.0,         // Vertical tilt angle in milliradians (mrad)
+      wavePhase: 0.0          // Used to animate the moving light waves on the bench
+    };
+
+    // =========================================================================
+    // 2. DOM ELEMENT REFERENCES
+    // =========================================================================
+    const benchCanvas = document.getElementById('benchCanvas');
+    const benchCtx = benchCanvas.getContext('2d');
+
+    const fringeCanvas = document.getElementById('fringeCanvas');
+    const fringeCtx = fringeCanvas.getContext('2d');
+
+    // Sliders
+    const sliderWavelength = document.getElementById('sliderWavelength');
+    const sliderDisplacement = document.getElementById('sliderDisplacement');
+    const sliderTiltX = document.getElementById('sliderTiltX');
+    const sliderTiltY = document.getElementById('sliderTiltY');
+
+    // Readout Labels
+    const valWavelength = document.getElementById('valWavelength');
+    const valDisplacement = document.getElementById('valDisplacement');
+    const valTiltX = document.getElementById('valTiltX');
+    const valTiltY = document.getElementById('valTiltY');
+
+    const readoutOPD = document.getElementById('readoutOPD');
+    const readoutFringes = document.getElementById('readoutFringes');
+    const readoutIntensity = document.getElementById('readoutIntensity');
+    const wavelengthBadge = document.getElementById('wavelengthBadge');
+    const beamStatusBadge = document.getElementById('beamStatusBadge');
+
+    // =========================================================================
+    // 3. PHYSICS HELPER FUNCTIONS
+    // =========================================================================
+
+    /**
+     * Converts a visible light wavelength (400nm - 700nm) into an RGB color.
+     * Based on Dan Bruton's approximate visible spectrum algorithm.
+     */
+    function wavelengthToRGB(wavelength) {
+      let r = 0, g = 0, b = 0;
+      if (wavelength >= 380 && wavelength < 440) {
+        r = -(wavelength - 440) / (440 - 380);
+        g = 0.0;
+        b = 1.0;
+      } else if (wavelength >= 440 && wavelength < 490) {
+        r = 0.0;
+        g = (wavelength - 440) / (490 - 440);
+        b = 1.0;
+      } else if (wavelength >= 490 && wavelength < 510) {
+        r = 0.0;
+        g = 1.0;
+        b = -(wavelength - 510) / (510 - 490);
+      } else if (wavelength >= 510 && wavelength < 580) {
+        r = (wavelength - 510) / (580 - 510);
+        g = 1.0;
+        b = 0.0;
+      } else if (wavelength >= 580 && wavelength < 645) {
+        r = 1.0;
+        g = -(wavelength - 645) / (645 - 580);
+        b = 0.0;
+      } else if (wavelength >= 645 && wavelength <= 750) {
+        r = 1.0;
+        g = 0.0;
+        b = 0.0;
+      }
+
+      // Intensity falloff near edges of human vision
+      let factor = 1.0;
+      if (wavelength >= 380 && wavelength < 420) {
+        factor = 0.3 + 0.7 * (wavelength - 380) / (420 - 380);
+      } else if (wavelength > 645 && wavelength <= 750) {
+        factor = 0.3 + 0.7 * (750 - wavelength) / (750 - 645);
+      }
+
+      return {
+        r: Math.round(255 * Math.pow(r * factor, 0.8)),
+        g: Math.round(255 * Math.pow(g * factor, 0.8)),
+        b: Math.round(255 * Math.pow(b * factor, 0.8))
+      };
+    }
+
+    // =========================================================================
+    // 4. INTERFERENCE FRINGE RENDERER (Right Panel)
+    // =========================================================================
+    // We use a fixed internal resolution (260x260) for smooth 60fps rendering
+    const FRINGE_SIZE = 260;
+    fringeCanvas.width = FRINGE_SIZE;
+    fringeCanvas.height = FRINGE_SIZE;
+    const fringeImageData = fringeCtx.createImageData(FRINGE_SIZE, FRINGE_SIZE);
+
+    function renderFringes() {
+      const data = fringeImageData.data;
+      const rgb = wavelengthToRGB(state.wavelengthNm);
+
+      // Convert units to meters for exact physics calculations
+      const lambdaMeters = state.wavelengthNm * 1e-9;     // nm -> m
+      const dMeters = state.displacementUm * 1e-6;        // um -> m
+      const thetaXRad = state.tiltXmrad * 1e-3;           // mrad -> rad
+      const thetaYRad = state.tiltYmrad * 1e-3;           // mrad -> rad
+
+      // Virtual detector physical radius = 4 mm (0.004 m)
+      // Virtual focal/curvature parameter f = 0.8 m (produces clear circular fringes)
+      const detectorHalfWidth = 0.004;
+      const fCurvature = 0.8;
+
+      const halfSize = FRINGE_SIZE / 2;
+      const radiusSqLimit = halfSize * halfSize;
+
+      for (let py = 0; py < FRINGE_SIZE; py++) {
+        // Normalized y coordinate in meters (-4mm to +4mm)
+        const dy = py - halfSize;
+        const yMeters = (dy / halfSize) * detectorHalfWidth;
+
+        for (let px = 0; px < FRINGE_SIZE; px++) {
+          const dx = px - halfSize;
+          const distSq = dx * dx + dy * dy;
+          const idx = (py * FRINGE_SIZE + px) * 4;
+
+          // Circular aperture mask (looks like a real optical detector screen)
+          if (distSq > radiusSqLimit) {
+            data[idx] = 8;
+            data[idx + 1] = 12;
+            data[idx + 2] = 22;
+            data[idx + 3] = 255;
+            continue;
+          }
+
+          const xMeters = (dx / halfSize) * detectorHalfWidth;
+          const rSqMeters = xMeters * xMeters + yMeters * yMeters;
+
+          // CORE MICHELSON INTERFEROMETER EQUATION:
+          // Optical Path Difference at point (x, y) on detector:
+          // OPD(x, y) = 2*d + (x^2 + y^2)/f + 2*theta_x*x + 2*theta_y*y
+          const opd = (2 * dMeters) + (rSqMeters / fCurvature) + (2 * thetaXRad * xMeters) + (2 * thetaYRad * yMeters);
+
+          // Phase difference: delta_phi = (2 * pi / lambda) * OPD
+          // Intensity: I = cos^2(delta_phi / 2) = cos^2((pi / lambda) * OPD)
+          const halfPhase = (Math.PI / lambdaMeters) * opd;
+          const intensity = Math.pow(Math.cos(halfPhase), 2);
+
+          // Soft edge fade at the circular detector rim
+          const edgeFade = distSq > radiusSqLimit * 0.92
+            ? 1 - (distSq - radiusSqLimit * 0.92) / (radiusSqLimit * 0.08)
+            : 1.0;
+
+          data[idx] = Math.round(rgb.r * intensity * edgeFade);
+          data[idx + 1] = Math.round(rgb.g * intensity * edgeFade);
+          data[idx + 2] = Math.round(rgb.b * intensity * edgeFade);
+          data[idx + 3] = 255;
+        }
+      }
+
+      fringeCtx.putImageData(fringeImageData, 0, 0);
+    }
+
+    // =========================================================================
+    // 5. OPTICAL BENCH SCHEMATIC RENDERER (Left Panel)
+    // =========================================================================
+    function resizeBenchCanvas() {
+      const rect = benchCanvas.parentElement.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      benchCanvas.width = rect.width * dpr;
+      benchCanvas.height = rect.height * dpr;
+      benchCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function renderOpticalBench() {
+      const w = benchCanvas.width / (window.devicePixelRatio || 1);
+      const h = benchCanvas.height / (window.devicePixelRatio || 1);
+      if (w === 0 || h === 0) return;
+
+      benchCtx.clearRect(0, 0, w, h);
+
+      // Draw subtle optical breadboard grid holes
+      benchCtx.fillStyle = '#1e293b';
+      const gridStep = 24;
+      for (let gx = gridStep; gx < w; gx += gridStep) {
+        for (let gy = gridStep; gy < h; gy += gridStep) {
+          benchCtx.beginPath();
+          benchCtx.arc(gx, gy, 1.2, 0, Math.PI * 2);
+          benchCtx.fill();
+        }
+      }
+
+      // Key coordinates on the bench
+      const cx = w * 0.50;              // Beam splitter center X
+      const cy = h * 0.52;              // Beam splitter center Y
+      const laserX = w * 0.12;          // Laser exit X
+      const m1Y = h * 0.16;             // Fixed top mirror M1 Y
+
+      // Exaggerate mirror displacement visually so student sees M2 move when dragging slider
+      const visualShiftPx = state.displacementUm * 3.2;
+      const m2X = w * 0.84 + visualShiftPx;
+
+      // Exaggerate tilt angle visually (mrad -> visual radians)
+      const visualTiltRad = state.tiltXmrad * 0.045;
+      const detectorY = h * 0.86;       // Bottom detector Y
+
+      const rgb = wavelengthToRGB(state.wavelengthNm);
+      const beamColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+      const beamGlow = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.35)`;
+
+      // Helper to draw a glowing laser segment with animated wave pulses
+      function drawLaserRay(x1, y1, x2, y2, alpha = 0.9, width = 3) {
+        benchCtx.save();
+        benchCtx.strokeStyle = beamGlow;
+        benchCtx.lineWidth = width + 5;
+        benchCtx.lineCap = 'round';
+        benchCtx.beginPath();
+        benchCtx.moveTo(x1, y1);
+        benchCtx.lineTo(x2, y2);
+        benchCtx.stroke();
+
+        benchCtx.strokeStyle = beamColor;
+        benchCtx.globalAlpha = alpha;
+        benchCtx.lineWidth = width;
+        benchCtx.beginPath();
+        benchCtx.moveTo(x1, y1);
+        benchCtx.lineTo(x2, y2);
+        benchCtx.stroke();
+
+        // Animated dashed wave packets showing direction of travel
+        benchCtx.strokeStyle = '#ffffff';
+        benchCtx.globalAlpha = 0.45 * alpha;
+        benchCtx.lineWidth = 1.5;
+        benchCtx.setLineDash([4, 14]);
+        benchCtx.lineDashOffset = -state.wavePhase;
+        benchCtx.beginPath();
+        benchCtx.moveTo(x1, y1);
+        benchCtx.lineTo(x2, y2);
+        benchCtx.stroke();
+        benchCtx.restore();
+      }
+
+      // 1. Incoming Laser Beam (Laser -> Beam Splitter)
+      drawLaserRay(laserX, cy, cx, cy, 1.0, 3.5);
+
+      // 2. Arm 1: Beam Splitter -> Fixed Top Mirror M1 -> Back to Beam Splitter
+      drawLaserRay(cx - 2, cy, cx - 2, m1Y, 0.75, 2.5);
+      drawLaserRay(cx + 2, m1Y, cx + 2, cy, 0.75, 2.5);
+
+      // 3. Arm 2: Beam Splitter -> Movable Mirror M2 -> Reflected back at 2*tilt angle
+      drawLaserRay(cx, cy - 2, m2X, cy - 2, 0.75, 2.5);
+
+      // Reflected beam returns from M2 toward Beam Splitter, deflected by 2 * tilt
+      const arm2Length = m2X - cx;
+      const returnYAtBS = (cy + 2) + Math.tan(2 * visualTiltRad) * arm2Length;
+      drawLaserRay(m2X, cy + 2, cx, returnYAtBS, 0.75, 2.5);
+
+      // 4. Recombined Beams (Beam Splitter -> Bottom Detector)
+      // Beam from M1 goes straight down
+      drawLaserRay(cx - 2, cy, cx - 2, detectorY, 0.85, 2.5);
+      // Beam from M2 goes down, shifted/angled if M2 is tilted
+      const detectorDrop = detectorY - returnYAtBS;
+      const hitDetectorX = (cx + 2) + Math.tan(2 * visualTiltRad) * detectorDrop;
+      drawLaserRay(cx, returnYAtBS, hitDetectorX, detectorY, 0.85, 2.5);
+
+      // --- DRAW HARDWARE COMPONENTS ---
+
+      // Laser Housing (Left)
+      benchCtx.fillStyle = '#1e293b';
+      benchCtx.strokeStyle = '#475569';
+      benchCtx.lineWidth = 2;
+      benchCtx.beginPath();
+      benchCtx.roundRect(laserX - 46, cy - 16, 46, 32, 6);
+      benchCtx.fill();
+      benchCtx.stroke();
+
+      benchCtx.fillStyle = '#cbd5e1';
+      benchCtx.font = '600 11px Inter, sans-serif';
+      benchCtx.textAlign = 'center';
+      benchCtx.fillText('LASER', laserX - 23, cy + 4);
+
+      // 50/50 Beam Splitter (Center, 45 degrees)
+      const bsRadius = 24;
+      benchCtx.save();
+      benchCtx.translate(cx, cy);
+      benchCtx.rotate(-Math.PI / 4); // 45-degree tilt
+      benchCtx.fillStyle = 'rgba(56, 189, 248, 0.18)';
+      benchCtx.strokeStyle = '#38bdf8';
+      benchCtx.lineWidth = 2.5;
+      benchCtx.fillRect(-bsRadius, -3, bsRadius * 2, 6);
+      benchCtx.strokeRect(-bsRadius, -3, bsRadius * 2, 6);
+      benchCtx.restore();
+
+      benchCtx.fillStyle = '#94a3b8';
+      benchCtx.font = '500 11px Inter, sans-serif';
+      benchCtx.textAlign = 'right';
+      benchCtx.fillText('Beam Splitter', cx - 22, cy + 28);
+
+      // Fixed Top Mirror M1
+      benchCtx.fillStyle = '#334155';
+      benchCtx.strokeStyle = '#94a3b8';
+      benchCtx.lineWidth = 2;
+      benchCtx.fillRect(cx - 28, m1Y - 8, 56, 8);
+      benchCtx.strokeRect(cx - 28, m1Y - 8, 56, 8);
+      // Reflective bottom coating
+      benchCtx.strokeStyle = '#38bdf8';
+      benchCtx.beginPath();
+      benchCtx.moveTo(cx - 28, m1Y);
+      benchCtx.lineTo(cx + 28, m1Y);
+      benchCtx.stroke();
+
+      benchCtx.fillStyle = '#cbd5e1';
+      benchCtx.textAlign = 'center';
+      benchCtx.fillText('Fixed Mirror (M1)', cx, m1Y - 15);
+
+      // Movable & Tiltable Right Mirror M2
+      benchCtx.save();
+      benchCtx.translate(m2X, cy);
+      benchCtx.rotate(visualTiltRad);
+      benchCtx.fillStyle = '#334155';
+      benchCtx.strokeStyle = '#f59e0b';
+      benchCtx.lineWidth = 2;
+      benchCtx.fillRect(0, -28, 8, 56);
+      benchCtx.strokeRect(0, -28, 8, 56);
+      // Reflective left coating
+      benchCtx.strokeStyle = '#fbbf24';
+      benchCtx.beginPath();
+      benchCtx.moveTo(0, -28);
+      benchCtx.lineTo(0, 28);
+      benchCtx.stroke();
+      benchCtx.restore();
+
+      benchCtx.fillStyle = '#fbbf24';
+      benchCtx.textAlign = 'center';
+      benchCtx.fillText('Movable M2', m2X + 4, cy - 36);
+
+      // Bottom Detector Screen
+      benchCtx.fillStyle = '#1e293b';
+      benchCtx.strokeStyle = '#10b981';
+      benchCtx.lineWidth = 2.5;
+      benchCtx.beginPath();
+      benchCtx.roundRect(cx - 38, detectorY, 76, 10, 4);
+      benchCtx.fill();
+      benchCtx.stroke();
+
+      benchCtx.fillStyle = '#34d399';
+      benchCtx.textAlign = 'center';
+      benchCtx.fillText('Detector Screen', cx, detectorY + 24);
+    }
+
+    // =========================================================================
+    // 6. UI & READOUT SYNCHRONIZATION
+    // =========================================================================
+    function updateMeasurements() {
+      // Update slider labels
+      valWavelength.textContent = `${state.wavelengthNm.toFixed(1)} nm`;
+      valDisplacement.textContent = `${state.displacementUm >= 0 ? '+' : ''}${state.displacementUm.toFixed(2)} µm`;
+      valTiltX.textContent = `${state.tiltXmrad >= 0 ? '+' : ''}${state.tiltXmrad.toFixed(2)} mrad`;
+      valTiltY.textContent = `${state.tiltYmrad >= 0 ? '+' : ''}${state.tiltYmrad.toFixed(2)} mrad`;
+
+      // Wavelength color badge text
+      let colorName = 'Red';
+      if (state.wavelengthNm < 450) colorName = 'Violet';
+      else if (state.wavelengthNm < 495) colorName = 'Blue';
+      else if (state.wavelengthNm < 570) colorName = 'Green';
+      else if (state.wavelengthNm < 590) colorName = 'Yellow';
+      else if (state.wavelengthNm < 620) colorName = 'Orange';
+      else if (Math.abs(state.wavelengthNm - 632.8) < 0.5) colorName = 'He-Ne Red';
+
+      wavelengthBadge.textContent = `${state.wavelengthNm.toFixed(1)} nm (${colorName})`;
+
+      // Alignment status badge
+      const totalTilt = Math.hypot(state.tiltXmrad, state.tiltYmrad);
+      if (totalTilt < 0.05) {
+        beamStatusBadge.textContent = 'Aligned (Bullseye Rings)';
+        beamStatusBadge.className = 'text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium';
+      } else {
+        beamStatusBadge.textContent = `Tilted (${totalTilt.toFixed(2)} mrad)`;
+        beamStatusBadge.className = 'text-xs px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium';
+      }
+
+      // Physics Lab Calculations
+      const opdUm = 2 * state.displacementUm;
+      const deltaDUm = state.displacementUm - state.referenceUm;
+      const lambdaUm = state.wavelengthNm * 1e-3; // convert nm to um
+      const fringeCount = (2 * deltaDUm) / lambdaUm;
+
+      // Center Intensity: I = cos^2(pi * OPD / lambda)
+      const centerIntensity = Math.pow(Math.cos((Math.PI * opdUm) / lambdaUm), 2) * 100;
+
+      readoutOPD.textContent = `${opdUm >= 0 ? '+' : ''}${opdUm.toFixed(2)} µm`;
+      readoutFringes.textContent = `${fringeCount >= 0 ? '+' : ''}${fringeCount.toFixed(2)}`;
+      readoutIntensity.textContent = `${centerIntensity.toFixed(1)}%`;
+
+      // Re-render interference fringes
+      renderFringes();
+    }
+
+    // Event Listeners for Sliders
+    sliderWavelength.addEventListener('input', (e) => {
+      state.wavelengthNm = parseFloat(e.target.value);
+      updateMeasurements();
+    });
+
+    sliderDisplacement.addEventListener('input', (e) => {
+      state.displacementUm = parseFloat(e.target.value);
+      updateMeasurements();
+    });
+
+    sliderTiltX.addEventListener('input', (e) => {
+      state.tiltXmrad = parseFloat(e.target.value);
+      updateMeasurements();
+    });
+
+    sliderTiltY.addEventListener('input', (e) => {
+      state.tiltYmrad = parseFloat(e.target.value);
+      updateMeasurements();
+    });
+
+    // Reset Fringe Counter button (sets current position as zero reference)
+    document.getElementById('btnResetFringes').addEventListener('click', () => {
+      state.referenceUm = state.displacementUm;
+      updateMeasurements();
+    });
+
+    // Reset Alignment button (snaps mirror back to 0 displacement and 0 tilt)
+    document.getElementById('btnResetAll').addEventListener('click', () => {
+      state.displacementUm = 0.0;
+      state.referenceUm = 0.0;
+      state.tiltXmrad = 0.0;
+      state.tiltYmrad = 0.0;
+
+      sliderDisplacement.value = 0.0;
+      sliderTiltX.value = 0.0;
+      sliderTiltY.value = 0.0;
+
+      updateMeasurements();
+    });
+
+    // =========================================================================
+    // 7. ANIMATION LOOP (Keeps laser beams flowing smoothly on the bench)
+    // =========================================================================
+    function animateLoop() {
+      state.wavePhase = (state.wavePhase + 0.6) % 18;
+      renderOpticalBench();
+      requestAnimationFrame(animateLoop);
+    }
+
+    // Initialize on load and handle window resizing
+    window.addEventListener('resize', () => {
+      resizeBenchCanvas();
+      renderOpticalBench();
+    });
+
+    window.onload = function () {
+      resizeBenchCanvas();
+      updateMeasurements();
+      animateLoop();
+    };
+  </script>
+</body>
+</html>
